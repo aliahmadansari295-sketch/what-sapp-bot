@@ -3,7 +3,8 @@ const app = express();
 
 app.use(express.json());
 
-const VERIFY_TOKEN = "wacrm123"; 
+// यह लाइन Render के डैशबोर्ड से आपका पासवर्ड उठा लेगी
+const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
 
 app.get("/webhook", (req, res) => {
     let mode = req.query["hub.mode"];
