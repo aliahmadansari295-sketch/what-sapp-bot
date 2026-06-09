@@ -80,6 +80,19 @@ if (message.type === "button") {
     else if (buttonPayload === "Book Video Call") {
         sendWhatsAppMessage(senderNumber, "शानदार! 📅\n\nएडमिशन प्रोसेस या किसी भी डाउट पर बात करने के लिए कृपया अपना पसंदीदा दिन और समय बताएं। हम जल्द ही आपके लिए एक वीडियो कॉल शेड्यूल करेंगे।");
     }
+    else if (message.type === "text") {
+                let incomingText = message.text.body;
+                console.log(`Number: ${senderNumber} ने टेक्स्ट भेजा: ${incomingText}`);
+                
+                // जैसे ही कोई कुछ लिखकर भेजे, उसे अपना टेंपलेट भेज दें!
+                sendTemplateMessage(senderNumber);
+            }
+            // 👆 ---------------------------- 👆
+            
+            else {
+                console.log(`Received a different type of message: ${message.type}`);
+            }
+    
 }
         }
     }
