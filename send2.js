@@ -1,8 +1,8 @@
 // Fill in your details here
-const TOKEN = "YOUR_PERMANENT_ACCESS_TOKEN";
-const PHONE_NUMBER_ID = "YOUR_PHONE_NUMBER_ID"; // Found at the top of the Meta API Setup page
-const TO_NUMBER = "919876543210"; // Your test receiving number (with country code, e.g., 91, no '+')
-const TEMPLATE_NAME = "your_template_name"; 
+const TOKEN = process.env.WHATSAPP_TOKEN;
+const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
+const TO_NUMBER = process.env.TEST_PHONE_NUMBER; // Your test receiving number (with country code, e.g., 91, no '+')
+const TEMPLATE_NAME = "welcome_bot_1"; 
 
 // The actual code to send the message request to Meta
 fetch(`https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`, {
@@ -18,7 +18,7 @@ fetch(`https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`, {
         "template": {
             "name": TEMPLATE_NAME,
             "language": {
-                "code": "en_US" // Use "en_US" for English, or "hi" for Hindi
+                "code": "en" // Use "en_US" for English, or "hi" for Hindi
             }
         }
     })
