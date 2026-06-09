@@ -1,4 +1,28 @@
 const express = require("express");
+// यह फंक्शन व्हाट्सएप पर ऑटो-रिप्लाई भेजेगा
+async function sendWhatsAppMessage(to_number, text_message) {
+    const token = process.env.WHATSAPP_TOKEN;
+    const phoneId = process.env.PHONE_NUMBER_ID;
+
+    try {
+        await fetch(`https://graph.facebook.com/v18.0/${phoneId}/messages`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                "messaging_product": "whatsapp",
+                "to": to_number,
+                "type": "text",
+                "text": { "body": text_message }
+            })
+        });
+        console.log(`मैसेज सफलता से भेजा गया: ${to_number}`);
+    } catch (error) {
+        console.error("मैसेज भेजने में एरर:", error);
+    }
+}
 const app = express();
 
 app.use(express.json());
@@ -40,18 +64,23 @@ app.post("/webhook", (req, res) => {
             let senderNumber = message.from; 
 
             // If the user pressed a standard quick reply button
-            if (message.type === "button") {
-                let buttonPayload = message.button.payload; 
-                console.log(`Number: ${senderNumber} pressed button: ${buttonPayload}`);
-            } 
-            // If the message type is 'interactive' (often used for template buttons)
-            else if (message.type === "interactive") {
-                let interactivePayload = message.interactive?.button_reply?.id;
-                console.log(`Number: ${senderNumber} pressed interactive button: ${interactivePayload}`);
-            }
-            else {
-                console.log(`Received a different type of message: ${message.type}`);
-            }
+            // अगर यूज़र ने कोई बटन दबाया है
+if (message.type === "button") {
+    let buttonPayload = message.button.payload; 
+    console.log(`Number: ${senderNumber} pressed button: ${buttonPayload}`);
+
+    // --- यहाँ से हमारा असली बॉट लॉजिक शुरू होता है ---
+    
+    if (buttonPayload === "Watch Live Demo") {
+        sendWhatsAppMessage(senderNumber, "Welcome to 'Wait, What?'! 🎬\n\nयहाँ हमारे लेटेस्ट एनिमेटेड इन्फोटेक मिस्ट्री वीडियोस देखें और चैनल को सब्सक्राइब करना न भूलें: [अपना यूट्यूब लिंक यहाँ डालें]");
+    } 
+    else if (buttonPayload === "Get Quotation") {
+        sendWhatsAppMessage(senderNumber, "नमस्ते! 🎓\n\nकॉलेज एडमिशन कंसल्टिंग की हमारी पूरी फीस और स्ट्रक्चर तैयार है। एडमिशन के स्टेप्स और पोर्टल की डिटेल्स के लिए इस लिंक पर क्लिक करें: [अपनी वेबसाइट का लिंक यहाँ डालें]");
+    } 
+    else if (buttonPayload === "Book Video Call") {
+        sendWhatsAppMessage(senderNumber, "शानदार! 📅\n\nएडमिशन प्रोसेस या किसी भी डाउट पर बात करने के लिए कृपया अपना पसंदीदा दिन और समय बताएं। हम जल्द ही आपके लिए एक वीडियो कॉल शेड्यूल करेंगे।");
+    }
+}
         }
     }
 
