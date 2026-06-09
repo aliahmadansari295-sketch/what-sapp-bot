@@ -1,5 +1,6 @@
 const express = require("express");
-// यह फंक्शन व्हाट्सएप पर ऑटो-रिप्लाई भेजेगा
+
+// --- Function 1: To send regular text messages ---
 async function sendWhatsAppMessage(to_number, text_message) {
     const token = process.env.WHATSAPP_TOKEN;
     const phoneId = process.env.PHONE_NUMBER_ID;
@@ -18,42 +19,65 @@ async function sendWhatsAppMessage(to_number, text_message) {
                 "text": { "body": text_message }
             })
         });
-        console.log(`मैसेज सफलता से भेजा गया: ${to_number}`);
+        console.log(`Text message sent successfully to: ${to_number}`);
     } catch (error) {
-        console.error("मैसेज भेजने में एरर:", error);
+        console.error("Error sending text message:", error);
     }
 }
-const app = express();
 
+// --- Function 2: To send the WhatsApp template ---
+async function sendTemplateMessage(to_number) {
+    const token = process.env.WHATSAPP_TOKEN;
+    const phoneId = process.env.PHONE_NUMBER_ID;
+
+    try {
+        await fetch(`https://graph.facebook.com/v18.0/${phoneId}/messages`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                "messaging_product": "whatsapp",
+                "to": to_number,
+                "type": "template",
+                "template": {
+                    "name": "welcome_bot_1", // <-- IMPORTANT: Enter your actual template name here
+                    "language": {
+                        "code": "en" // Change to "hi" if your template is in Hindi
+                    }
+                }
+            })
+        });
+        console.log(`Template sent successfully to: ${to_number}`);
+    } catch (error) {
+        console.error("Error sending template:", error);
+    }
+}
+
+const app = express();
 app.use(express.json());
 
-// यह लाइन Render के डैशबोर्ड से आपका पासवर्ड उठा लेगी
 const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
 
+// Webhook Verification (Run once by Meta)
 app.get("/webhook", (req, res) => {
     let mode = req.query["hub.mode"];
     let token = req.query["hub.verify_token"];
     let challenge = req.query["hub.challenge"];
 
-    // Check if a request is from Meta and the token matches
     if (mode === "subscribe" && token === VERIFY_TOKEN) {
         console.log("Success! Meta webhook is verified!");
         res.status(200).send(challenge);
     } else {
-        // If the token doesn't match, send a 403 Forbidden error
         res.sendStatus(403);
     }
 });
 
-// This code will catch incoming messages and button clicks from Meta
+// Handling incoming messages and button clicks
 app.post("/webhook", (req, res) => {
-    console.log("\n==== Raw Meta Data ====");
-    console.log(JSON.stringify(req.body, null, 2));
-    console.log("==========================\n");
-
     let body = req.body;
 
-    // Check if the request is from a WhatsApp Business Account
     if (body.object === "whatsapp_business_account") {
         let entry = body.entry?.[0];
         let changes = entry?.changes?.[0];
@@ -63,45 +87,41 @@ app.post("/webhook", (req, res) => {
         if (message) {
             let senderNumber = message.from; 
 
-            // If the user pressed a standard quick reply button
-            // अगर यूज़र ने कोई बटन दबाया है
-if (message.type === "button") {
-    let buttonPayload = message.button.payload; 
-    console.log(`Number: ${senderNumber} pressed button: ${buttonPayload}`);
-
-    // --- यहाँ से हमारा असली बॉट लॉजिक शुरू होता है ---
-    
-    if (buttonPayload === "Watch Live Demo") {
-        sendWhatsAppMessage(senderNumber, "Welcome to 'Wait, What?'! 🎬\n\nयहाँ हमारे लेटेस्ट एनिमेटेड इन्फोटेक मिस्ट्री वीडियोस देखें और चैनल को सब्सक्राइब करना न भूलें: [अपना यूट्यूब लिंक यहाँ डालें]");
-    } 
-    else if (buttonPayload === "Get Quotation") {
-        sendWhatsAppMessage(senderNumber, "नमस्ते! 🎓\n\nकॉलेज एडमिशन कंसल्टिंग की हमारी पूरी फीस और स्ट्रक्चर तैयार है। एडमिशन के स्टेप्स और पोर्टल की डिटेल्स के लिए इस लिंक पर क्लिक करें: [अपनी वेबसाइट का लिंक यहाँ डालें]");
-    } 
-    else if (buttonPayload === "Book Video Call") {
-        sendWhatsAppMessage(senderNumber, "शानदार! 📅\n\nएडमिशन प्रोसेस या किसी भी डाउट पर बात करने के लिए कृपया अपना पसंदीदा दिन और समय बताएं। हम जल्द ही आपके लिए एक वीडियो कॉल शेड्यूल करेंगे।");
-    }
-    else if (message.type === "text") {
-                let incomingText = message.text.body;
-                console.log(`Number: ${senderNumber} ने टेक्स्ट भेजा: ${incomingText}`);
+            // CONDITION 1: If the user pressed a button
+            if (message.type === "button") {
+                let buttonPayload = message.button.payload; 
+                console.log(`Number: ${senderNumber} pressed button: ${buttonPayload}`);
                 
-                // जैसे ही कोई कुछ लिखकर भेजे, उसे अपना टेंपलेट भेज दें!
+                if (buttonPayload === "Watch Live Demo") {
+                    sendWhatsAppMessage(senderNumber, "Welcome to 'Wait, What?'! 🎬\n\nWatch our latest animated infotech mystery videos here and don't forget to subscribe: [Insert your YouTube link here]");
+                } 
+                else if (buttonPayload === "Get Quotation") {
+                    sendWhatsAppMessage(senderNumber, "Hello! 🎓\n\nOur complete fee structure and details for college admission consulting are ready. Click this link for admission steps and portal details: [Insert your website link here]");
+                } 
+                else if (buttonPayload === "Book Video Call") {
+                    sendWhatsAppMessage(senderNumber, "Great! 📅\n\nPlease let us know your preferred day and time to discuss the admission process or any doubts. We will schedule a video call for you shortly.");
+                }
+            } 
+            
+            // CONDITION 2: If the user sent a text message (like "Hi")
+            else if (message.type === "text") {
+                let incomingText = message.text.body;
+                console.log(`Number: ${senderNumber} sent text: ${incomingText}`);
+                
+                // Send the template as soon as a text is received
                 sendTemplateMessage(senderNumber);
             }
-            // 👆 ---------------------------- 👆
             
             else {
                 console.log(`Received a different type of message: ${message.type}`);
             }
-    
-}
         }
     }
 
-    // It is required to send a 200 OK response to Meta, otherwise they will keep resending the data
+    // Always return a 200 OK status to Meta
     res.sendStatus(200); 
 });
 
-// Dynamic port setting for Render
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`Render server is fully ready on port ${PORT}!`);
