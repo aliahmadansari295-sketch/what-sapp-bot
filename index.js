@@ -1,4 +1,10 @@
+require('dotenv').config(); // <-- 1. dotenv at the very top!
 const express = require("express");
+const { GoogleGenerativeAI } = require("@google/generative-ai"); // <-- 2. Gemini Package
+
+// <-- 3. Gemini API Secure Setup
+const gemini_api_key = process.env.GEMINI_API_KEY;
+const genAI = new GoogleGenerativeAI(gemini_api_key);
 
 // --- Function 1: To send regular text messages ---
 async function sendWhatsAppMessage(to_number, text_message) {
@@ -42,9 +48,9 @@ async function sendTemplateMessage(to_number) {
                 "to": to_number,
                 "type": "template",
                 "template": {
-                    "name": "welcome_bot_1", // <-- IMPORTANT: Enter your actual template name here
+                    "name": "welcome_bot_1", 
                     "language": {
-                        "code": "en" // Change to "hi" if your template is in Hindi
+                        "code": "en" 
                     }
                 }
             })
@@ -52,6 +58,26 @@ async function sendTemplateMessage(to_number) {
         console.log(`Template sent successfully to: ${to_number}`);
     } catch (error) {
         console.error("Error sending template:", error);
+    }
+}
+
+// --- Function 3: To generate a response from Gemini AI (New) ---
+async function generateGeminiResponse(user_message) {
+    try {
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        
+        const prompt = `You are a smart WhatsApp bot for an educational consulting and tech agency. 
+        Your job is to provide short, professional, and helpful answers to user queries. 
+        User's query: "${user_message}"
+        Keep the response under 2-3 lines.`;
+
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        return response.text();
+        
+    } catch (error) {
+        console.error("Gemini AI Error:", error);
+        return "Sorry, my server is currently facing some issues. Please message again after some time!";
     }
 }
 
@@ -75,7 +101,10 @@ app.get("/webhook", (req, res) => {
 });
 
 // Handling incoming messages and button clicks
-app.post("/webhook", (req, res) => {
+app.post("/webhook", async (req, res) => {
+
+    // 1. Send 200 OK to Meta immediately to prevent webhook flooding
+    res.sendStatus(200); 
     let body = req.body;
 
     if (body.object === "whatsapp_business_account") {
@@ -108,7 +137,7 @@ app.post("/webhook", (req, res) => {
                 let incomingText = message.text.body;
                 console.log(`Number: ${senderNumber} sent text: ${incomingText}`);
                 
-                // Send the template as soon as a text is received
+                // For now, this is just sending the template. We will connect this to Gemini next.
                 sendTemplateMessage(senderNumber);
             }
             
@@ -117,9 +146,7 @@ app.post("/webhook", (req, res) => {
             }
         }
     }
-
-    // Always return a 200 OK status to Meta
-    res.sendStatus(200); 
+    // (The duplicate res.sendStatus(200) at the bottom has been removed)
 });
 
 const PORT = process.env.PORT || 3000;
