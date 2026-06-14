@@ -64,7 +64,7 @@ async function sendTemplateMessage(to_number) {
 // --- Function 3: To generate a response from Gemini AI (New) ---
 async function generateGeminiResponse(user_message) {
     try {
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
         
         const prompt = `You are a smart WhatsApp bot for an educational consulting and tech agency. 
         Your job is to provide short, professional, and helpful answers to user queries. 
@@ -133,16 +133,21 @@ app.post("/webhook", async (req, res) => {
             } 
             
             // CONDITION 2: If the user sent a text message (like "Hi")
+            // CONDITION 2: If the user sent a text message
             else if (message.type === "text") {
                 let incomingText = message.text.body;
+                let textForCheck = incomingText.toLowerCase().trim(); // चेक करने के लिए छोटे अक्षरों में कर लें
                 console.log(`Number: ${senderNumber} sent text: ${incomingText}`);
                 
-                // For now, this is just sending the template. We will connect this to Gemini next.
-                sendTemplateMessage(senderNumber);
-            }
-            
-            else {
-                console.log(`Received a different type of message: ${message.type}`);
+                // अगर यूज़र 'hi', 'hello' या 'menu' लिखता है, तो बटनों वाला टेंपलेट भेजें
+                if (textForCheck === "hi" || textForCheck === "hello" || textForCheck === "menu") {
+                    sendTemplateMessage(senderNumber);
+                } 
+                // बाकी किसी भी सवाल के लिए सीधा Gemini AI से जवाब मांगें
+                else {
+                    let aiResponse = await generateGeminiResponse(incomingText); // Gemini को सवाल भेजें
+                    sendWhatsAppMessage(senderNumber, aiResponse); // Gemini का जवाब यूज़र को भेज दें
+                }
             }
         }
     }
