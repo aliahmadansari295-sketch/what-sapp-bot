@@ -1,10 +1,12 @@
-require('dotenv').config(); // <-- 1. dotenv at the very top!
+require('dotenv').config(); 
 const express = require("express");
-const { GoogleGenerativeAI } = require("@google/generative-ai"); // <-- 2. Gemini Package
+const { GoogleGenerativeAI } = require("@google/generative-ai"); 
 
-// <-- 3. Gemini API Secure Setup
 const gemini_api_key = process.env.GEMINI_API_KEY;
 const genAI = new GoogleGenerativeAI(gemini_api_key);
+
+// --- Securely fetching your n8n Webhook URL from Environment Variables ---
+const N8N_WEBHOOK_URL = process.env.N8N_WEBHOOK_URL;
 
 // --- Function 1: To send regular text messages ---
 async function sendWhatsAppMessage(to_number, text_message) {
@@ -61,15 +63,23 @@ async function sendTemplateMessage(to_number) {
     }
 }
 
-// --- Function 3: To generate a response from Gemini AI (New) ---
+// --- Function 3: To generate a response and extract leads via Gemini AI ---
 async function generateGeminiResponse(user_message) {
     try {
+        // Using 1.5-flash as it is highly stable for JSON extraction
         const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
         
-        const prompt = `You are a smart WhatsApp bot for an educational consulting and tech agency. 
-        Your job is to provide short, professional, and helpful answers to user queries. 
-        User's query: "${user_message}"
-        Keep the response under 2-3 lines.`;
+        // The Prompt: Training Gemini to only ask for Name and Class
+        const prompt = `You are a smart WhatsApp bot for an educational consulting agency. 
+        Your job is to answer user queries and politely ask for their Name and Class.
+        
+        RULES:
+        1. If the user has provided BOTH their Name and Class, your response MUST be strictly in this JSON format (no extra text):
+        {"name": "User's Name", "class": "User's Class"}
+        
+        2. If the user has NOT provided both pieces of information, give a short 2-line answer to their query and politely ask for the missing details (Name or Class).
+        
+        User's message: "${user_message}"`;
 
         const result = await model.generateContent(prompt);
         const response = await result.response;
@@ -128,30 +138,58 @@ app.post("/webhook", async (req, res) => {
                     sendWhatsAppMessage(senderNumber, "Hello! 🎓\n\nOur complete fee structure and details for college admission consulting are ready. Click this link for admission steps and portal details: [Insert your website link here]");
                 } 
                 else if (buttonPayload === "Book Video Call") {
-                    sendWhatsAppMessage(senderNumber, "Great! 📅\n\nPlease let us know your preferred day and time to discuss the admission process or any doubts. We will schedule a video call for you shortly.");
+                    // Start the lead generation process when they click the button
+                    sendWhatsAppMessage(senderNumber, "Great! 📅\n\nBefore we schedule the call, could you please tell me your Name and which Class/Year you are in?");
                 }
             } 
             
-            // CONDITION 2: If the user sent a text message (like "Hi")
             // CONDITION 2: If the user sent a text message
             else if (message.type === "text") {
                 let incomingText = message.text.body;
-                let textForCheck = incomingText.toLowerCase().trim(); // चेक करने के लिए छोटे अक्षरों में कर लें
+                let textForCheck = incomingText.toLowerCase().trim(); 
                 console.log(`Number: ${senderNumber} sent text: ${incomingText}`);
                 
-                // अगर यूज़र 'hi', 'hello' या 'menu' लिखता है, तो बटनों वाला टेंपलेट भेजें
+                // If the user sends a greeting, send the template with buttons
                 if (textForCheck === "hi" || textForCheck === "hello" || textForCheck === "menu") {
                     sendTemplateMessage(senderNumber);
                 } 
-                // बाकी किसी भी सवाल के लिए सीधा Gemini AI से जवाब मांगें
+                // For any other text, let Gemini handle it
                 else {
-                    let aiResponse = await generateGeminiResponse(incomingText); // Gemini को सवाल भेजें
-                    sendWhatsAppMessage(senderNumber, aiResponse); // Gemini का जवाब यूज़र को भेज दें
+                    let aiResponse = await generateGeminiResponse(incomingText); 
+                    
+                    // Check if Gemini returned the required JSON format
+                    if (aiResponse.includes('{"name"')) {
+                        try {
+                            // Clean the text to ensure it is valid JSON
+                            let cleanData = aiResponse.replace(/```json/g, "").replace(/```/g, "").trim();
+                            let leadData = JSON.parse(cleanData);
+                            
+                            // MAGIC TRICK: Automatically add the user's WhatsApp number to the data!
+                            leadData.phone = senderNumber; 
+                            
+                            // Send the complete data to n8n Webhook
+                            await fetch(N8N_WEBHOOK_URL, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify(leadData)
+                            });
+                            
+                            // Send confirmation to the user
+                            sendWhatsAppMessage(senderNumber, "Thank you! Your details have been saved. Our team will contact you shortly. 😊");
+                            console.log("🔥 Lead successfully extracted and sent to n8n!");
+                            
+                        } catch (err) {
+                            console.log("JSON Parsing Error:", err);
+                            sendWhatsAppMessage(senderNumber, "Sorry, I couldn't process your details correctly. Let's try again.");
+                        }
+                    } else {
+                        // If Gemini is still asking questions, send its normal text response
+                        sendWhatsAppMessage(senderNumber, aiResponse);
+                    }
                 }
             }
         }
     }
-    // (The duplicate res.sendStatus(200) at the bottom has been removed)
 });
 
 const PORT = process.env.PORT || 3000;
