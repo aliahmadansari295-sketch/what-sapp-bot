@@ -144,6 +144,7 @@ app.post("/webhook", async (req, res) => {
             } 
             
             // CONDITION 2: If the user sent a text message
+            // CONDITION 2: If the user sent a text message
             else if (message.type === "text") {
                 let incomingText = message.text.body;
                 let textForCheck = incomingText.toLowerCase().trim(); 
@@ -153,37 +154,42 @@ app.post("/webhook", async (req, res) => {
                 if (textForCheck === "hi" || textForCheck === "hello" || textForCheck === "menu") {
                     sendTemplateMessage(senderNumber);
                 } 
-                // For any other text, let Gemini handle it
                 else {
                     let aiResponse = await generateGeminiResponse(incomingText); 
                     
-                    // Check if Gemini returned the required JSON format
-                    if (aiResponse.includes('{"name"')) {
+                    // 🔥 NEW BULLETPROOF LOGIC: Case-insensitive checking 🔥
+                    // Checks if the response contains '{' and the word "name" (whether uppercase or lowercase)
+                    if (aiResponse.includes('{') && aiResponse.toLowerCase().includes('"name"')) {
                         try {
-                            // Clean the text to ensure it is valid JSON
+                            // Remove backticks (```) to extract pure JSON
                             let cleanData = aiResponse.replace(/```json/g, "").replace(/```/g, "").trim();
-                            let leadData = JSON.parse(cleanData);
+                            let rawLeadData = JSON.parse(cleanData);
                             
-                            // MAGIC TRICK: Automatically add the user's WhatsApp number to the data!
-                            leadData.phone = senderNumber; 
+                            // Standardize the keys whether Gemini writes 'Name' or 'name', 'Class' or 'class'
+                            let finalLeadData = {
+                                name: rawLeadData.name || rawLeadData.Name,
+                                class: rawLeadData.class || rawLeadData.Class,
+                                phone: senderNumber // Automatically attach the WhatsApp number
+                            };
                             
-                            // Send the complete data to n8n Webhook
+                            // Send the data to the n8n Webhook
                             await fetch(N8N_WEBHOOK_URL, {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify(leadData)
+                                body: JSON.stringify(finalLeadData)
                             });
                             
-                            // Send confirmation to the user
+                            // Send a confirmation message to the user
                             sendWhatsAppMessage(senderNumber, "Thank you! Your details have been saved. Our team will contact you shortly. 😊");
                             console.log("🔥 Lead successfully extracted and sent to n8n!");
                             
                         } catch (err) {
                             console.log("JSON Parsing Error:", err);
+                            // If parsing fails, ask the user to try again instead of showing a system error
                             sendWhatsAppMessage(senderNumber, "Sorry, I couldn't process your details correctly. Let's try again.");
                         }
                     } else {
-                        // If Gemini is still asking questions, send its normal text response
+                        // If it is not a JSON format, send the normal AI text response directly
                         sendWhatsAppMessage(senderNumber, aiResponse);
                     }
                 }
