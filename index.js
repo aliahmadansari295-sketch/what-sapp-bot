@@ -1,12 +1,46 @@
 require('dotenv').config(); 
 const express = require("express");
 const { GoogleGenerativeAI } = require("@google/generative-ai"); 
+const { google } = require('googleapis'); // 🔥 NEW: Added Google API
 
 const gemini_api_key = process.env.GEMINI_API_KEY;
 const genAI = new GoogleGenerativeAI(gemini_api_key);
 
-// --- Securely fetching your n8n Webhook URL from Environment Variables ---
-const N8N_WEBHOOK_URL = process.env.N8N_WEBHOOK_URL;
+// --- Google Sheets Authentication Setup ---
+// This grabs the JSON you pasted in Render and authenticates your bot
+const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS);
+const auth = new google.auth.GoogleAuth({
+    credentials: {
+        client_email: credentials.client_email,
+        private_key: credentials.private_key,
+    },
+    scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+});
+const sheets = google.sheets({ version: 'v4', auth });
+
+// --- Function to add data to Google Sheet ---
+async function saveToGoogleSheet(leadData, senderNumber) {
+    try {
+        const date = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+        
+        const request = {
+            spreadsheetId: process.env.SPREADSHEET_ID,
+            range: 'Sheet1!A:D', // Columns: Date, Name, Phone, Class
+            valueInputOption: 'USER_ENTERED',
+            resource: {
+                values: [
+                    [date, leadData.name, senderNumber, leadData.class]
+                ],
+            },
+        };
+
+        await sheets.spreadsheets.values.append(request);
+        console.log("✅ Lead successfully saved to Google Sheet!");
+
+    } catch (error) {
+        console.error("❌ Error saving to Google Sheet:", error);
+    }
+}
 
 // --- Function 1: To send regular text messages ---
 async function sendWhatsAppMessage(to_number, text_message) {
@@ -66,7 +100,6 @@ async function sendTemplateMessage(to_number) {
 // --- Function 3: To generate a response and extract leads via Gemini AI ---
 async function generateGeminiResponse(user_message) {
     try {
-        // Using 1.5-flash as it is highly stable for JSON extraction
         const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
         
         // The Prompt: Training Gemini to only ask for Name and Class
@@ -138,12 +171,10 @@ app.post("/webhook", async (req, res) => {
                     sendWhatsAppMessage(senderNumber, "Hello! 🎓\n\nOur complete fee structure and details for college admission consulting are ready. Click this link for admission steps and portal details: [Insert your website link here]");
                 } 
                 else if (buttonPayload === "Book Video Call") {
-                    // Start the lead generation process when they click the button
                     sendWhatsAppMessage(senderNumber, "Great! 📅\n\nBefore we schedule the call, could you please tell me your Name and which Class/Year you are in?");
                 }
             } 
             
-            // CONDITION 2: If the user sent a text message
             // CONDITION 2: If the user sent a text message
             else if (message.type === "text") {
                 let incomingText = message.text.body;
@@ -157,35 +188,28 @@ app.post("/webhook", async (req, res) => {
                 else {
                     let aiResponse = await generateGeminiResponse(incomingText); 
                     
-                    // 🔥 NEW BULLETPROOF LOGIC: Case-insensitive checking 🔥
-                    // Checks if the response contains '{' and the word "name" (whether uppercase or lowercase)
+                    // Case-insensitive checking for JSON structure
                     if (aiResponse.includes('{') && aiResponse.toLowerCase().includes('"name"')) {
                         try {
-                            // Remove backticks (```) to extract pure JSON
+                            // Remove backticks to extract pure JSON
                             let cleanData = aiResponse.replace(/```json/g, "").replace(/```/g, "").trim();
                             let rawLeadData = JSON.parse(cleanData);
                             
-                            // Standardize the keys whether Gemini writes 'Name' or 'name', 'Class' or 'class'
+                            // Standardize the keys
                             let finalLeadData = {
                                 name: rawLeadData.name || rawLeadData.Name,
                                 class: rawLeadData.class || rawLeadData.Class,
-                                phone: senderNumber // Automatically attach the WhatsApp number
+                                phone: senderNumber 
                             };
                             
-                            // Send the data to the n8n Webhook
-                            await fetch(N8N_WEBHOOK_URL, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify(finalLeadData)
-                            });
+                            // 🔥 NEW: Save data directly to Google Sheets 🔥
+                            await saveToGoogleSheet(finalLeadData, senderNumber);
                             
                             // Send a confirmation message to the user
-                            sendWhatsAppMessage(senderNumber, "Thank you! Your details have been saved. Our team will contact you shortly. 😊");
-                            console.log("🔥 Lead successfully extracted and sent to n8n!");
+                            sendWhatsAppMessage(senderNumber, "Thank you! Your details have been securely saved. Our founder will contact you shortly. 😊");
                             
                         } catch (err) {
                             console.log("JSON Parsing Error:", err);
-                            // If parsing fails, ask the user to try again instead of showing a system error
                             sendWhatsAppMessage(senderNumber, "Sorry, I couldn't process your details correctly. Let's try again.");
                         }
                     } else {
